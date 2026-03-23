@@ -1,0 +1,19 @@
+{
+  "name": "RecoverWell",
+  "short_name": "RecoverWell",
+  "description": "Your all-in-one addiction recovery companion",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#030712",
+  "theme_color": "#10b981",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["health", "lifestyle", "medical"]
+}
