@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { X, User, Calendar, DollarSign, Phone, Bell, Sun, Moon, AlertTriangle, Check, ChevronRight } from 'lucide-react';
+import { X, User, Phone, Bell, Sun, Moon, AlertTriangle, Check, ChevronRight, LogOut, Mail } from 'lucide-react';
 
 const SUBSTANCES = [
   'Alcohol', 'Opioids', 'Stimulants (cocaine, meth)', 'Cannabis',
   'Benzodiazepines', 'Nicotine', 'Gambling', 'Multiple substances', 'Other',
 ];
 
-export default function Settings({ userData, onUpdateUser, onClose, onReset }) {
+export default function Settings({ userData, onUpdateUser, onClose, onReset, onSignOut, userEmail }) {
   const [section, setSection] = useState(null);
   const [form, setForm] = useState({
     name: userData.name || '',
@@ -71,6 +71,8 @@ export default function Settings({ userData, onUpdateUser, onClose, onReset }) {
     { id: 'appearance', label: 'Appearance', icon: Sun, color: '#8b5cf6' },
     { id: 'danger', label: 'Reset Data', icon: AlertTriangle, color: '#ef4444' },
   ];
+
+  const [signOutConfirm, setSignOutConfirm] = useState(false);
 
   const renderSection = () => {
     switch (section) {
@@ -353,6 +355,19 @@ export default function Settings({ userData, onUpdateUser, onClose, onReset }) {
         <div className="px-5 py-4">
           {!section ? (
             <div className="space-y-2">
+              {/* Account info */}
+              {userEmail && (
+                <div className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 flex items-center gap-3 mb-2">
+                  <div className="w-9 h-9 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                    <Mail className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-gray-400 text-xs">Signed in as</p>
+                    <p className="text-white text-sm font-medium truncate">{userEmail}</p>
+                  </div>
+                </div>
+              )}
+
               {SECTIONS.map(s => (
                 <button
                   key={s.id}
@@ -375,6 +390,35 @@ export default function Settings({ userData, onUpdateUser, onClose, onReset }) {
                   <ChevronRight className="w-4 h-4 text-gray-600" />
                 </button>
               ))}
+              {/* Sign out */}
+              {onSignOut && (
+                <div className="pt-2 border-t border-gray-800 mt-2">
+                  {!signOutConfirm ? (
+                    <button
+                      onClick={() => setSignOutConfirm(true)}
+                      className="w-full flex items-center gap-4 p-4 rounded-xl border border-gray-800 bg-gray-900 hover:bg-gray-800 transition-all text-left"
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-gray-700/50 flex items-center justify-center flex-shrink-0">
+                        <LogOut className="w-4 h-4 text-gray-400" />
+                      </div>
+                      <span className="text-gray-300 font-medium text-sm">Sign Out</span>
+                    </button>
+                  ) : (
+                    <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 space-y-3">
+                      <p className="text-white text-sm font-semibold">Sign out of RecoverWell?</p>
+                      <p className="text-gray-400 text-xs">Your data is safely stored in the cloud.</p>
+                      <div className="flex gap-2">
+                        <button onClick={onSignOut} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2.5 rounded-xl text-sm font-semibold">
+                          Sign Out
+                        </button>
+                        <button onClick={() => setSignOutConfirm(false)} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2.5 rounded-xl text-sm font-semibold">
+                          Stay
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <>
