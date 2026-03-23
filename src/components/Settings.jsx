@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, User, Phone, Bell, Sun, Moon, AlertTriangle, Check, ChevronRight, LogOut, Mail } from 'lucide-react';
+import { subscribeToPush, unsubscribeFromPush, getPushSubscription } from '../lib/supabase';
 
 const SUBSTANCES = [
   'Alcohol', 'Opioids', 'Stimulants (cocaine, meth)', 'Cannabis',
   'Benzodiazepines', 'Nicotine', 'Gambling', 'Multiple substances', 'Other',
 ];
 
-export default function Settings({ userData, onUpdateUser, onClose, onReset, onSignOut, userEmail }) {
+export default function Settings({ userData, onUpdateUser, onClose, onReset, onSignOut, userEmail, userId }) {
   const [section, setSection] = useState(null);
   const [form, setForm] = useState({
     name: userData.name || '',
@@ -29,6 +30,13 @@ export default function Settings({ userData, onUpdateUser, onClose, onReset, onS
   const [notifStatus, setNotifStatus] = useState(
     typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
   );
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+  const [pushError, setPushError] = useState('');
+
+  useEffect(() => {
+    getPushSubscription().then(sub => setPushSubscribed(!!sub));
+  }, []);
 
   const save = (updates) => {
     const merged = { ...form, ...updates };
@@ -200,41 +208,95 @@ export default function Settings({ userData, onUpdateUser, onClose, onReset, onS
           </div>
         );
 
-      case 'notifications':
+      case 'notifications': {
+        const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window;
+
+        const handleSubscribe = async () => {
+          setPushLoading(true);
+          setPushError('');
+          try {
+            await subscribeToPush(userId);
+            setPushSubscribed(true);
+            setNotifStatus('granted');
+            save({ reminderEnabled: true });
+          } catch (err) {
+            setPushError(err.message || 'Could not enable notifications.');
+          } finally {
+            setPushLoading(false);
+          }
+        };
+
+        const handleUnsubscribe = async () => {
+          setPushLoading(true);
+          try {
+            await unsubscribeFromPush(userId);
+            setPushSubscribed(false);
+            save({ reminderEnabled: false });
+          } catch {}
+          finally { setPushLoading(false); }
+        };
+
         return (
           <div className="space-y-4">
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 space-y-3">
-              <p className="text-white font-semibold text-sm">Browser Notification Status</p>
-              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${
-                notifStatus === 'granted' ? 'bg-emerald-900/30 text-emerald-400' :
-                notifStatus === 'denied' ? 'bg-red-900/30 text-red-400' :
-                'bg-gray-800 text-gray-400'
-              }`}>
-                <div className={`w-2 h-2 rounded-full ${
-                  notifStatus === 'granted' ? 'bg-emerald-400' :
-                  notifStatus === 'denied' ? 'bg-red-400' : 'bg-gray-500'
-                }`} />
-                <span className="text-sm capitalize">{notifStatus === 'default' ? 'Not yet enabled' : notifStatus}</span>
+            {/* Status card */}
+            <div className={`rounded-xl border p-4 flex items-center gap-3 ${
+              pushSubscribed ? 'bg-emerald-900/20 border-emerald-700/40' : 'bg-gray-900 border-gray-800'
+            }`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${pushSubscribed ? 'bg-emerald-500/20' : 'bg-gray-800'}`}>
+                <Bell className={`w-5 h-5 ${pushSubscribed ? 'text-emerald-400' : 'text-gray-500'}`} />
               </div>
-              {notifStatus !== 'granted' && notifStatus !== 'unsupported' && (
-                <button
-                  onClick={requestNotifications}
-                  className="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-2.5 rounded-xl font-semibold text-sm"
-                >
-                  Enable Notifications
-                </button>
-              )}
-              {notifStatus === 'denied' && (
-                <p className="text-gray-500 text-xs">Notifications were blocked. Enable them in your browser settings to use this feature.</p>
-              )}
+              <div>
+                <p className="text-white text-sm font-semibold">
+                  {pushSubscribed ? 'Push Notifications Active' : 'Push Notifications Off'}
+                </p>
+                <p className="text-gray-400 text-xs mt-0.5">
+                  {pushSubscribed ? 'You\'ll get reminders even when the app is closed' : 'Enable to get daily reminders in the background'}
+                </p>
+              </div>
             </div>
 
-            {notifStatus === 'granted' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between bg-gray-900 border border-gray-800 rounded-xl p-4">
+            {!pushSupported && (
+              <div className="bg-yellow-900/20 border border-yellow-700/30 rounded-xl p-3">
+                <p className="text-yellow-300 text-xs">Push notifications are not supported in this browser. Try Chrome, Edge, or Firefox.</p>
+              </div>
+            )}
+
+            {pushError && (
+              <div className="bg-red-900/20 border border-red-700/30 rounded-xl p-3">
+                <p className="text-red-300 text-xs">{pushError}</p>
+                {notifStatus === 'denied' && (
+                  <p className="text-gray-500 text-xs mt-1">Go to browser settings → Site permissions → Notifications → Allow for this site.</p>
+                )}
+              </div>
+            )}
+
+            {pushSupported && (
+              pushSubscribed ? (
+                <button
+                  onClick={handleUnsubscribe}
+                  disabled={pushLoading}
+                  className="w-full border border-gray-700 text-gray-300 hover:bg-gray-800 py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-50"
+                >
+                  {pushLoading ? 'Disabling…' : 'Disable Push Notifications'}
+                </button>
+              ) : (
+                <button
+                  onClick={handleSubscribe}
+                  disabled={pushLoading}
+                  className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-50"
+                >
+                  {pushLoading ? 'Enabling…' : 'Enable Push Notifications'}
+                </button>
+              )
+            )}
+
+            {/* Reminder time (when push is active) */}
+            {pushSubscribed && (
+              <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 space-y-3">
+                <div className="flex items-center justify-between">
                   <div>
                     <p className="text-white text-sm font-medium">Daily Reminder</p>
-                    <p className="text-gray-400 text-xs mt-0.5">Get a daily check-in prompt</p>
+                    <p className="text-gray-400 text-xs mt-0.5">What time should we remind you?</p>
                   </div>
                   <button
                     onClick={() => save({ reminderEnabled: !form.reminderEnabled })}
@@ -244,24 +306,22 @@ export default function Settings({ userData, onUpdateUser, onClose, onReset, onS
                   </button>
                 </div>
                 {form.reminderEnabled && (
-                  <div>
-                    <label className="text-gray-400 text-xs font-medium mb-1.5 block">Reminder Time</label>
-                    <input
-                      type="time"
-                      value={form.reminderTime}
-                      onChange={e => save({ reminderTime: e.target.value })}
-                      className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
+                  <input
+                    type="time"
+                    value={form.reminderTime}
+                    onChange={e => save({ reminderTime: e.target.value })}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
+                  />
                 )}
               </div>
             )}
 
             <div className="bg-gray-900 rounded-xl border border-gray-800 p-3">
-              <p className="text-gray-500 text-xs">Note: Reminders only show while the app is open in your browser. For always-on reminders, add the app to your home screen (PWA).</p>
+              <p className="text-gray-500 text-xs">Reminders are sent by our server — they arrive even when RecoverWell is closed. Your reminder time is matched in UTC.</p>
             </div>
           </div>
         );
+      }
 
       case 'appearance':
         return (

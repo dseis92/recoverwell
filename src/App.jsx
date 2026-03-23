@@ -243,6 +243,7 @@ export default function App() {
           onReset={handleReset}
           onSignOut={handleSignOut}
           userEmail={session.user.email}
+          userId={session.user.id}
         />
       )}
     </div>
