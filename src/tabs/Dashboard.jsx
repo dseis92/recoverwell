@@ -157,10 +157,16 @@ export default function Dashboard({ userData, onNavigate, onUpdateUser, onOpenSe
           <span className="text-6xl font-black text-white">{elapsed.days}</span>
           <span className="text-xl text-emerald-400 font-semibold">days</span>
         </div>
-        <div className="flex gap-3 mt-1">
+        <div className="flex gap-3 mt-1 flex-wrap items-center">
           <span className="text-gray-300 text-sm">{elapsed.hours}h {elapsed.minutes}m</span>
           <span className="text-gray-500 text-sm">•</span>
-          <span className="text-gray-300 text-sm">{userData.substance}</span>
+          <div className="flex flex-wrap gap-1.5">
+            {userData.substance.split(', ').map((sub, i) => (
+              <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-300 border border-gray-700">
+                {sub}
+              </span>
+            ))}
+          </div>
         </div>
         <div className="mt-4">
           <div className="flex justify-between text-xs text-gray-400 mb-1">

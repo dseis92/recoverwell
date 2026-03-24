@@ -1,11 +1,11 @@
 import React from 'react';
-import { Home, BarChart2, Wrench, Users, BookOpen } from 'lucide-react';
+import { Home, BarChart2, Activity, Wrench, Users, BookOpen } from 'lucide-react';
 
 const tabs = [
   { id: 'home', label: 'Home', Icon: Home },
   { id: 'tracker', label: 'Tracker', Icon: BarChart2 },
+  { id: 'analytics', label: 'Analytics', Icon: Activity },
   { id: 'tools', label: 'Tools', Icon: Wrench },
-  { id: 'community', label: 'Community', Icon: Users },
   { id: 'resources', label: 'Resources', Icon: BookOpen },
 ];
 

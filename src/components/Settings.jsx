@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Phone, Bell, Sun, Moon, AlertTriangle, Check, ChevronRight, LogOut, Mail } from 'lucide-react';
+import { X, User, Phone, Bell, Sun, Moon, AlertTriangle, Check, ChevronRight, LogOut, Mail, Download, FileJson, FileText, Calendar, Plus, Trash2 } from 'lucide-react';
 import { subscribeToPush, unsubscribeFromPush, getPushSubscription } from '../lib/supabase';
 
 const SUBSTANCES = [
@@ -23,8 +23,11 @@ export default function Settings({ userData, onUpdateUser, onClose, onReset, onS
     emergencyPhone: userData.emergencyPhone || '',
     reminderEnabled: userData.reminderEnabled || false,
     reminderTime: userData.reminderTime || '09:00',
+    timezone: userData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
     lightMode: userData.lightMode || false,
+    customMilestones: userData.customMilestones || [],
   });
+  const [newMilestone, setNewMilestone] = useState({ name: '', date: '' });
   const [saved, setSaved] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
   const [notifStatus, setNotifStatus] = useState(
@@ -53,7 +56,9 @@ export default function Settings({ userData, onUpdateUser, onClose, onReset, onS
       emergencyPhone: merged.emergencyPhone,
       reminderEnabled: merged.reminderEnabled,
       reminderTime: merged.reminderTime,
+      timezone: merged.timezone,
       lightMode: merged.lightMode,
+      customMilestones: merged.customMilestones,
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -72,11 +77,53 @@ export default function Settings({ userData, onUpdateUser, onClose, onReset, onS
     }
   };
 
+  const exportAsJSON = () => {
+    const dataStr = JSON.stringify(userData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `recoverwell-data-${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportAsCSV = () => {
+    const moodLog = userData.moodLog || [];
+    if (moodLog.length === 0) return;
+
+    const headers = ['Date', 'Mood', 'Energy', 'Sleep', 'Triggers', 'Grateful', 'Notes'];
+    const rows = moodLog.map(entry => [
+      new Date(entry.date).toLocaleString(),
+      entry.mood || '',
+      entry.energy || '',
+      entry.sleep || '',
+      (entry.triggers || []).join('; '),
+      entry.grateful || '',
+      entry.notes || ''
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const dataBlob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `recoverwell-mood-log-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const SECTIONS = [
     { id: 'profile', label: 'Profile & Sobriety', icon: User, color: '#10b981' },
     { id: 'sponsor', label: 'Sponsor & Emergency Contact', icon: Phone, color: '#3b82f6' },
     { id: 'notifications', label: 'Daily Reminder', icon: Bell, color: '#f59e0b' },
+    { id: 'milestones', label: 'Custom Milestones', icon: Calendar, color: '#ec4899' },
     { id: 'appearance', label: 'Appearance', icon: Sun, color: '#8b5cf6' },
+    { id: 'export', label: 'Export Your Data', icon: Download, color: '#06b6d4' },
     { id: 'danger', label: 'Reset Data', icon: AlertTriangle, color: '#ef4444' },
   ];
 
@@ -96,22 +143,34 @@ export default function Settings({ userData, onUpdateUser, onClose, onReset, onS
               />
             </div>
             <div>
-              <label className="text-gray-400 text-xs font-medium mb-1.5 block">Substance</label>
+              <label className="text-gray-400 text-xs font-medium mb-1.5 block">Substances (select all that apply)</label>
               <div className="space-y-1.5">
-                {SUBSTANCES.map(s => (
-                  <button
-                    key={s}
-                    onClick={() => setForm(f => ({ ...f, substance: s }))}
-                    className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border text-sm transition-all ${
-                      form.substance === s
-                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
-                        : 'border-gray-700 bg-gray-800 text-gray-300'
-                    }`}
-                  >
-                    {s}
-                    {form.substance === s && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                ))}
+                {SUBSTANCES.map(s => {
+                  const substances = form.substance ? form.substance.split(', ') : [];
+                  const isSelected = substances.includes(s);
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => {
+                        if (isSelected) {
+                          const updated = substances.filter(sub => sub !== s).join(', ');
+                          setForm(f => ({ ...f, substance: updated }));
+                        } else {
+                          const updated = [...substances, s].join(', ');
+                          setForm(f => ({ ...f, substance: updated }));
+                        }
+                      }}
+                      className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border text-sm transition-all ${
+                        isSelected
+                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                          : 'border-gray-700 bg-gray-800 text-gray-300'
+                      }`}
+                    >
+                      {s}
+                      {isSelected && <Check className="w-3.5 h-3.5" />}
+                    </button>
+                  );
+                })}
               </div>
             </div>
             <div>
@@ -306,12 +365,40 @@ export default function Settings({ userData, onUpdateUser, onClose, onReset, onS
                   </button>
                 </div>
                 {form.reminderEnabled && (
-                  <input
-                    type="time"
-                    value={form.reminderTime}
-                    onChange={e => save({ reminderTime: e.target.value })}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
-                  />
+                  <>
+                    <div>
+                      <label className="text-gray-400 text-xs font-medium mb-1.5 block">Reminder Time</label>
+                      <input
+                        type="time"
+                        value={form.reminderTime}
+                        onChange={e => save({ reminderTime: e.target.value })}
+                        className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-gray-400 text-xs font-medium mb-1.5 block">Your Timezone</label>
+                      <select
+                        value={form.timezone}
+                        onChange={e => save({ timezone: e.target.value })}
+                        className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
+                      >
+                        <option value="America/New_York">Eastern Time (ET)</option>
+                        <option value="America/Chicago">Central Time (CT)</option>
+                        <option value="America/Denver">Mountain Time (MT)</option>
+                        <option value="America/Los_Angeles">Pacific Time (PT)</option>
+                        <option value="America/Anchorage">Alaska Time (AKT)</option>
+                        <option value="Pacific/Honolulu">Hawaii Time (HT)</option>
+                        <option value="Europe/London">London (GMT/BST)</option>
+                        <option value="Europe/Paris">Paris (CET/CEST)</option>
+                        <option value="Europe/Berlin">Berlin (CET/CEST)</option>
+                        <option value="Asia/Tokyo">Tokyo (JST)</option>
+                        <option value="Asia/Shanghai">Shanghai (CST)</option>
+                        <option value="Asia/Dubai">Dubai (GST)</option>
+                        <option value="Australia/Sydney">Sydney (AEDT/AEST)</option>
+                        <option value="Pacific/Auckland">Auckland (NZDT/NZST)</option>
+                      </select>
+                    </div>
+                  </>
                 )}
               </div>
             )}
@@ -322,6 +409,103 @@ export default function Settings({ userData, onUpdateUser, onClose, onReset, onS
           </div>
         );
       }
+
+      case 'milestones':
+        return (
+          <div className="space-y-4">
+            <div className="bg-pink-900/20 border border-pink-700/30 rounded-xl p-3">
+              <p className="text-pink-300 text-xs">Add personal milestones to celebrate beyond the standard recovery dates.</p>
+            </div>
+
+            {/* Add new milestone */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 space-y-3">
+              <p className="text-white font-medium text-sm">Add Milestone</p>
+              <div>
+                <label className="text-gray-400 text-xs font-medium mb-1.5 block">Milestone Name</label>
+                <input
+                  value={newMilestone.name}
+                  onChange={e => setNewMilestone(m => ({ ...m, name: e.target.value }))}
+                  placeholder="e.g. Son's birthday sober, 100 days"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-pink-500"
+                />
+              </div>
+              <div>
+                <label className="text-gray-400 text-xs font-medium mb-1.5 block">Target Date</label>
+                <input
+                  type="date"
+                  value={newMilestone.date}
+                  onChange={e => setNewMilestone(m => ({ ...m, date: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-pink-500"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  if (newMilestone.name && newMilestone.date) {
+                    save({
+                      customMilestones: [
+                        ...form.customMilestones,
+                        { ...newMilestone, id: Date.now() }
+                      ]
+                    });
+                    setNewMilestone({ name: '', date: '' });
+                  }
+                }}
+                disabled={!newMilestone.name || !newMilestone.date}
+                className="w-full bg-pink-500 hover:bg-pink-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Plus className="w-4 h-4" />
+                Add Milestone
+              </button>
+            </div>
+
+            {/* Existing milestones */}
+            {form.customMilestones.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-gray-400 text-xs font-medium">Your Milestones</p>
+                {form.customMilestones
+                  .sort((a, b) => new Date(a.date) - new Date(b.date))
+                  .map(milestone => {
+                    const daysUntil = Math.ceil((new Date(milestone.date) - new Date()) / 86400000);
+                    const isPast = daysUntil < 0;
+                    return (
+                      <div
+                        key={milestone.id}
+                        className="bg-gray-900 border border-gray-800 rounded-xl p-3 flex items-center justify-between"
+                      >
+                        <div className="flex-1">
+                          <p className="text-white text-sm font-medium">{milestone.name}</p>
+                          <p className="text-gray-400 text-xs mt-0.5">
+                            {new Date(milestone.date).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                            {isPast ? (
+                              <span className="text-gray-500 ml-2">• Passed</span>
+                            ) : daysUntil === 0 ? (
+                              <span className="text-pink-400 ml-2">• Today!</span>
+                            ) : (
+                              <span className="text-pink-400 ml-2">• In {daysUntil} days</span>
+                            )}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            save({
+                              customMilestones: form.customMilestones.filter(m => m.id !== milestone.id)
+                            });
+                          }}
+                          className="text-red-400 hover:text-red-300 p-2"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+        );
 
       case 'appearance':
         return (
@@ -342,6 +526,56 @@ export default function Settings({ userData, onUpdateUser, onClose, onReset, onS
                   <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all ${form.lightMode ? 'left-6' : 'left-0.5'}`} />
                 </button>
               </div>
+            </div>
+          </div>
+        );
+
+      case 'export':
+        return (
+          <div className="space-y-4">
+            <div className="bg-cyan-900/20 border border-cyan-700/30 rounded-xl p-3">
+              <p className="text-cyan-300 text-xs">Export your recovery data to keep a personal backup or for analysis.</p>
+            </div>
+
+            <div className="space-y-3">
+              <button
+                onClick={exportAsJSON}
+                className="w-full flex items-center gap-4 p-4 rounded-xl border border-gray-800 bg-gray-900 hover:bg-gray-800 transition-all text-left"
+              >
+                <div className="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center flex-shrink-0">
+                  <FileJson className="w-5 h-5 text-cyan-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-white font-medium text-sm">Export as JSON</p>
+                  <p className="text-gray-400 text-xs mt-0.5">Complete data including all fields</p>
+                </div>
+                <Download className="w-4 h-4 text-gray-500" />
+              </button>
+
+              <button
+                onClick={exportAsCSV}
+                disabled={!userData.moodLog || userData.moodLog.length === 0}
+                className="w-full flex items-center gap-4 p-4 rounded-xl border border-gray-800 bg-gray-900 hover:bg-gray-800 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center flex-shrink-0">
+                  <FileText className="w-5 h-5 text-cyan-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-white font-medium text-sm">Export Mood Log as CSV</p>
+                  <p className="text-gray-400 text-xs mt-0.5">
+                    {userData.moodLog && userData.moodLog.length > 0
+                      ? `${userData.moodLog.length} entries • Spreadsheet format`
+                      : 'No mood log entries yet'}
+                  </p>
+                </div>
+                <Download className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-3">
+              <p className="text-gray-400 text-xs">
+                <span className="font-medium text-gray-300">Data Privacy:</span> Exports are generated locally on your device. Your data is never sent to any third party during export.
+              </p>
             </div>
           </div>
         );

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Zap, Brain, BarChart2, Wind, Shield, ArrowLeft, ChevronRight, Check, RefreshCw, Heart } from 'lucide-react';
+import Affirmations from '../components/Affirmations';
+import PhotoDiary from '../components/PhotoDiary';
 
 // ─── Craving Manager ───────────────────────────────────────────────────────────
 const CRAVING_TRIGGERS = [
@@ -577,6 +579,8 @@ function RelapsePreventionPlan({ userData, onUpdateUser, onBack }) {
 
 // ─── Main Tools Tab ─────────────────────────────────────────────────────────────
 const TOOL_CARDS = [
+  { id: 'affirmations', title: 'Daily Affirmations', desc: 'Motivational quotes and personal affirmations', emoji: '💚', color: 'emerald' },
+  { id: 'photodiary', title: 'Photo Diary', desc: 'Document your recovery journey visually', emoji: '📸', color: 'blue' },
   { id: 'craving', title: 'Craving Manager', desc: 'Get immediate help when cravings hit', emoji: '⚡', color: 'red' },
   { id: 'cbt', title: 'CBT Exercises', desc: 'Thought records, behavioral activation & urge surfing', emoji: '🧠', color: 'blue' },
   { id: 'cba', title: 'Cost-Benefit Analysis', desc: 'SMART Recovery decision-making tool', emoji: '⚖️', color: 'emerald' },
@@ -596,6 +600,13 @@ export default function Tools({ userData, onUpdateUser }) {
   const [activeTool, setActiveTool] = useState(null);
 
   if (activeTool) {
+    if (activeTool === 'affirmations') {
+      return <Affirmations userData={userData} onUpdateUser={onUpdateUser} />;
+    }
+    if (activeTool === 'photodiary') {
+      return <PhotoDiary userData={userData} onUpdateUser={onUpdateUser} />;
+    }
+
     return (
       <div className="px-4 pt-6 pb-4 fade-in">
         <button

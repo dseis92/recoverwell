@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { supabase, loadProfile, saveProfile, signOut } from './lib/supabase';
 import Auth from './components/Auth';
 import Setup from './components/Setup';
@@ -6,11 +6,23 @@ import Navigation from './components/Navigation';
 import Settings from './components/Settings';
 import Confetti from './components/Confetti';
 import SOSButton from './components/SOSButton';
-import Dashboard from './tabs/Dashboard';
-import Tracker from './tabs/Tracker';
-import Tools from './tabs/Tools';
-import Community from './tabs/Community';
-import Resources from './tabs/Resources';
+
+// Lazy load tab components for better performance
+const Dashboard = lazy(() => import('./tabs/Dashboard'));
+const Tracker = lazy(() => import('./tabs/Tracker'));
+const Analytics = lazy(() => import('./tabs/Analytics'));
+const Tools = lazy(() => import('./tabs/Tools'));
+const Community = lazy(() => import('./tabs/Community'));
+const Resources = lazy(() => import('./tabs/Resources'));
+
+// Loading component for Suspense fallback
+function TabLoader() {
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="w-8 h-8 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
+    </div>
+  );
+}
 
 const LOCAL_KEY = 'recoverwell_v1';
 const MILESTONES = [1, 3, 7, 14, 30, 60, 90, 180, 365, 730, 1825];
@@ -39,7 +51,9 @@ export default function App() {
   const [showConfetti, setShowConfetti] = useState(false);
   const [confettiMsg, setConfettiMsg] = useState('');
   const [syncStatus, setSyncStatus] = useState('synced');
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const notifChecked = useRef(false);
+  const syncQueue = useRef([]);
 
   // ── Auth: listen for session changes ───────────────────
   useEffect(() => {
@@ -59,23 +73,35 @@ export default function App() {
   useEffect(() => {
     if (!session) return;
     (async () => {
-      setSyncStatus('syncing');
-      let profile = await loadProfile(session.user.id);
+      try {
+        setSyncStatus('syncing');
+        let profile = await loadProfile(session.user.id);
 
-      // Migration: if no cloud profile but localStorage has data, migrate it
-      if (!profile) {
+        // Migration: if no cloud profile but localStorage has data, migrate it
+        if (!profile) {
+          const local = localStorage.getItem(LOCAL_KEY);
+          if (local) {
+            try { profile = JSON.parse(local); } catch { /* ignore */ }
+          }
+        }
+
+        if (profile) {
+          setUserData(profile);
+          // Ensure cloud is up to date
+          await saveProfile(session.user.id, profile);
+        }
+        setSyncStatus('synced');
+      } catch (error) {
+        console.error('Error loading profile:', error);
+        setSyncStatus('error');
+        // Try to load from localStorage as fallback
         const local = localStorage.getItem(LOCAL_KEY);
         if (local) {
-          try { profile = JSON.parse(local); } catch { /* ignore */ }
+          try {
+            setUserData(JSON.parse(local));
+          } catch {}
         }
       }
-
-      if (profile) {
-        setUserData(profile);
-        // Ensure cloud is up to date
-        await saveProfile(session.user.id, profile);
-      }
-      setSyncStatus('synced');
     })();
   }, [session?.user?.id]);
 
@@ -120,17 +146,83 @@ export default function App() {
     return () => clearInterval(interval);
   }, [userData?.reminderEnabled, userData?.reminderTime, userData?.moodLog]);
 
+  // ── Online/Offline detection ───────────────────────────
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      setSyncStatus('synced');
+      // Process sync queue when coming back online
+      if (syncQueue.current.length > 0 && session) {
+        processSyncQueue();
+      }
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      setSyncStatus('offline');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [session]);
+
+  // ── Process sync queue ─────────────────────────────────
+  const processSyncQueue = async () => {
+    if (!session || syncQueue.current.length === 0) return;
+
+    try {
+      setSyncStatus('syncing');
+      const queue = [...syncQueue.current];
+      syncQueue.current = [];
+
+      // Process most recent update (latest userData state)
+      const latestUpdate = queue[queue.length - 1];
+      const ok = await saveProfile(session.user.id, latestUpdate);
+
+      if (ok) {
+        setSyncStatus('synced');
+      } else {
+        // Re-add to queue if failed
+        syncQueue.current.push(latestUpdate);
+        setSyncStatus('error');
+        setTimeout(() => setSyncStatus('offline'), 3000);
+      }
+    } catch (error) {
+      console.error('Error processing sync queue:', error);
+      setSyncStatus('error');
+      setTimeout(() => setSyncStatus('offline'), 3000);
+    }
+  };
+
   // ── Save data: local + cloud ───────────────────────────
   const saveUserData = (updates) => {
     setUserData(prev => {
       const updated = { ...prev, ...updates };
       localStorage.setItem(LOCAL_KEY, JSON.stringify(updated));
+
       if (session) {
-        setSyncStatus('syncing');
-        saveProfile(session.user.id, updated).then(ok => {
-          setSyncStatus(ok ? 'synced' : 'error');
-          if (!ok) setTimeout(() => setSyncStatus('synced'), 3000);
-        });
+        if (!isOnline) {
+          // Queue for later if offline
+          syncQueue.current.push(updated);
+          setSyncStatus('offline');
+        } else {
+          // Sync immediately if online
+          setSyncStatus('syncing');
+          saveProfile(session.user.id, updated).then(ok => {
+            if (ok) {
+              setSyncStatus('synced');
+            } else {
+              // Queue on failure
+              syncQueue.current.push(updated);
+              setSyncStatus('error');
+              setTimeout(() => setSyncStatus(isOnline ? 'synced' : 'offline'), 3000);
+            }
+          });
+        }
       }
       return updated;
     });
@@ -203,6 +295,7 @@ export default function App() {
     switch (activeTab) {
       case 'home':      return <Dashboard userData={userData} onNavigate={setActiveTab} onUpdateUser={saveUserData} onOpenSettings={() => setShowSettings(true)} />;
       case 'tracker':   return <Tracker userData={userData} onUpdateUser={saveUserData} />;
+      case 'analytics': return <Analytics userData={userData} onNavigate={setActiveTab} />;
       case 'tools':     return <Tools userData={userData} onUpdateUser={saveUserData} />;
       case 'community': return <Community userData={userData} onUpdateUser={saveUserData} />;
       case 'resources': return <Resources />;
@@ -214,7 +307,9 @@ export default function App() {
     <div className={`min-h-screen bg-gray-950 text-white flex flex-col items-center${userData.lightMode ? ' light' : ''}`}>
       <div className="w-full max-w-md min-h-screen relative flex flex-col">
         <div className="flex-1 pb-20 tab-content" key={activeTab}>
-          {renderTab()}
+          <Suspense fallback={<TabLoader />}>
+            {renderTab()}
+          </Suspense>
         </div>
         <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
       </div>
@@ -222,6 +317,16 @@ export default function App() {
       <SyncDot status={syncStatus} />
       <SOSButton />
       <Confetti show={showConfetti} />
+
+      {/* Offline Banner */}
+      {!isOnline && (
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-40 bg-yellow-900/90 backdrop-blur border border-yellow-700/50 rounded-full px-4 py-2 flex items-center gap-2 animate-pulse">
+          <div className="w-2 h-2 rounded-full bg-yellow-400" />
+          <span className="text-yellow-200 text-xs font-medium">
+            {syncQueue.current.length > 0 ? 'Changes will sync when online' : 'You\'re offline'}
+          </span>
+        </div>
+      )}
 
       {showConfetti && (
         <div style={{

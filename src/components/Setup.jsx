@@ -66,7 +66,13 @@ export default function Setup({ onComplete }) {
 
   const handleFinish = () => {
     const sobrietyDateTime = new Date(`${form.sobrietyDate}T${form.sobrietyTime}:00`).toISOString();
-    onComplete({ ...form, sobrietyDate: sobrietyDateTime, createdAt: new Date().toISOString() });
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    onComplete({
+      ...form,
+      sobrietyDate: sobrietyDateTime,
+      timezone,
+      createdAt: new Date().toISOString()
+    });
   };
 
   return (
@@ -114,21 +120,36 @@ export default function Setup({ onComplete }) {
           )}
 
           {step === 1 && (
-            <div className="grid grid-cols-1 gap-2">
-              {SUBSTANCES.map(s => (
-                <button
-                  key={s}
-                  onClick={() => setForm(f => ({ ...f, substance: s }))}
-                  className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
-                    form.substance === s
-                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
-                      : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-gray-600'
-                  }`}
-                >
-                  <span className="text-sm font-medium">{s}</span>
-                  {form.substance === s && <Check className="w-4 h-4" />}
-                </button>
-              ))}
+            <div>
+              <p className="text-gray-400 text-xs mb-3">Select all that apply</p>
+              <div className="grid grid-cols-1 gap-2">
+                {SUBSTANCES.map(s => {
+                  const substances = form.substance ? form.substance.split(', ') : [];
+                  const isSelected = substances.includes(s);
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => {
+                        if (isSelected) {
+                          const updated = substances.filter(sub => sub !== s).join(', ');
+                          setForm(f => ({ ...f, substance: updated }));
+                        } else {
+                          const updated = [...substances, s].join(', ');
+                          setForm(f => ({ ...f, substance: updated }));
+                        }
+                      }}
+                      className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
+                        isSelected
+                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                          : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-gray-600'
+                      }`}
+                    >
+                      <span className="text-sm font-medium">{s}</span>
+                      {isSelected && <Check className="w-4 h-4" />}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
